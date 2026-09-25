@@ -26,6 +26,8 @@ namespace displaymenu {
     int fftHoldSpeed = 60;
     bool fftSmoothing = false;
     int fftSmoothingSpeed = 100;
+    bool differentialSpectrum = false;
+    int differentialRebinBins = 256;
     bool snrSmoothing = false;
     int snrSmoothingSpeed = 20;
 
@@ -99,6 +101,10 @@ namespace displaymenu {
         fftSmoothing = core::configManager.conf["fftSmoothing"];
         fftSmoothingSpeed = core::configManager.conf["fftSmoothingSpeed"];
         gui::waterfall.setFFTSmoothing(fftSmoothing);
+        differentialSpectrum = core::configManager.conf["differentialSpectrum"];
+        differentialRebinBins = core::configManager.conf["differentialRebinBins"];
+        gui::waterfall.setDifferentialSpectrum(differentialSpectrum);
+        gui::waterfall.setDifferentialRebinBins(differentialRebinBins);
         snrSmoothing = core::configManager.conf["snrSmoothing"];
         snrSmoothingSpeed = core::configManager.conf["snrSmoothingSpeed"];
         gui::waterfall.setSNRSmoothing(snrSmoothing);
@@ -227,6 +233,51 @@ namespace displaymenu {
             sigpath::iqFrontEnd.setFFTWindow(fftWindowList[selectedWindow]);
             core::configManager.acquire();
             core::configManager.conf["fftWindow"] = selectedWindow;
+            core::configManager.release(true);
+        }
+
+        if (ImGui::Checkbox("Differential Spectrum##_sdrpp", &differentialSpectrum)) {
+            gui::waterfall.setDifferentialSpectrum(differentialSpectrum);
+            core::configManager.acquire();
+            core::configManager.conf["differentialSpectrum"] = differentialSpectrum;
+            core::configManager.release(true);
+        }
+
+        if (ImGui::Button("Capture Reference##_sdrpp")) {
+            gui::waterfall.captureDifferentialBaseline();
+        }
+        ImGui::SameLine();
+        bool hasReference = gui::waterfall.hasDifferentialBaseline();
+        if (!hasReference) { style::beginDisabled(); }
+        if (ImGui::Button("Start Integration##_sdrpp")) {
+            gui::waterfall.startDifferentialIntegration();
+        }
+        if (!hasReference) { style::endDisabled(); }
+        ImGui::SameLine();
+        bool integrationRunning = gui::waterfall.isDifferentialObservationSampling();
+        if (!integrationRunning) { style::beginDisabled(); }
+        if (ImGui::Button("Stop##_sdrpp")) {
+            gui::waterfall.stopDifferentialIntegration();
+        }
+        if (!integrationRunning) { style::endDisabled(); }
+        ImGui::SameLine();
+        if (ImGui::Button("Reset##_sdrpp")) {
+            gui::waterfall.resetDifferentialIntegration();
+        }
+        if (gui::waterfall.isDifferentialBaselineSampling()) {
+            ImGui::Text("Capturing reference: %d/%d", gui::waterfall.getDifferentialBaselineSamples(), gui::waterfall.getDifferentialBaselineTarget());
+        }
+        else if (gui::waterfall.hasDifferentialBaseline()) {
+            ImGui::Text("Integration: %d frames%s", gui::waterfall.getDifferentialObservationSamples(), gui::waterfall.isDifferentialObservationSampling() ? " (running)" : " (stopped)");
+        }
+
+        ImGui::LeftLabel("Rebin (FFT bins)");
+        ImGui::FillWidth();
+        if (ImGui::InputInt("##sdrpp_differential_rebin", &differentialRebinBins, 64, 256)) {
+            differentialRebinBins = std::max(differentialRebinBins, 1);
+            gui::waterfall.setDifferentialRebinBins(differentialRebinBins);
+            core::configManager.acquire();
+            core::configManager.conf["differentialRebinBins"] = differentialRebinBins;
             core::configManager.release(true);
         }
 

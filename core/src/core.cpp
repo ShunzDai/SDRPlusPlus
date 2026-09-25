@@ -119,6 +119,8 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["fftHoldSpeed"] = 60;
     defConfig["fftSmoothing"] = false;
     defConfig["fftSmoothingSpeed"] = 100;
+    defConfig["differentialSpectrum"] = false;
+    defConfig["differentialRebinBins"] = 256;
     defConfig["snrSmoothing"] = false;
     defConfig["snrSmoothingSpeed"] = 20;
     defConfig["fastFFT"] = false;
