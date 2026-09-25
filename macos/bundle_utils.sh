@@ -17,6 +17,7 @@ bundle_is_not_to_be_installed() {
     if [ "$1" = "CoreFoundation" ]; then echo 1; fi
     if [ "$1" = "AppKit" ]; then echo 1; fi
     if [ "$1" = "CoreGraphics" ]; then echo 1; fi
+    if [ "$1" = "QuartzCore" ]; then echo 1; fi
     if [ "$1" = "CoreServices" ]; then echo 1; fi
     if [ "$1" = "Foundation" ]; then echo 1; fi
     if [ "$1" = "CoreAudio" ]; then echo 1; fi
@@ -56,12 +57,8 @@ bundle_get_exec_deps() {
 
 # bundle_get_exec_rpaths [exec_path]
 bundle_get_exec_rpaths() {
-    RPATHS_RAW=$(otool -l $1 | grep "path\ ")
-
-    # Iterate over all lines
-    echo "$RPATHS_RAW" | while read -r RPATH; do
-        echo $(bundle_get_second_element $RPATH)
-    done
+    RPATHS_RAW=$(otool -l $1 | grep '^[[:space:]]*path ')
+    echo "$RPATHS_RAW" | awk '{ print $2 }'
 }
 
 # bundle_find_full_path [dep_path] [exec_rpaths]
@@ -76,7 +73,7 @@ bundle_find_full_path() {
     local RPATH_NEXT=$(echo $1 | cut -c 8-)
 
     # Search in the exec's RPATH
-    echo "$2" | while read -r RPATH; do
+    while IFS= read -r RPATH; do
         # If not found, skip
         if [ ! -f $RPATH/$RPATH_NEXT ]; then
             continue
@@ -84,8 +81,10 @@ bundle_find_full_path() {
 
         # Correct dep path
         echo $RPATH/$RPATH_NEXT
-        return -1
-    done
+        return
+    done <<EOF
+$2
+EOF
 
     # Search other common paths
     if [ -f /usr/local/lib/$RPATH_NEXT ]; then
@@ -156,7 +155,7 @@ bundle_install_binary() {
             continue
         fi
 
-        local DEP_PATH=$(bundle_find_full_path $DEP $RPATHS)
+        local DEP_PATH=$(bundle_find_full_path "$DEP" "$RPATHS")
 
         # If the dependency is not installed, install it
         if [ ! -f $1/Contents/Frameworks/$DEP_NAME ]; then

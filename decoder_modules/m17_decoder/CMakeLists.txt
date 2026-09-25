@@ -33,5 +33,7 @@ else ()
     # Include it because for some reason pkgconfig doesn't look here?
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         target_include_directories(m17_decoder PRIVATE "/usr/local/include")
+        get_filename_component(LIBCODEC2_INCLUDE_ROOT "${LIBCODEC2_INCLUDE_DIRS}" DIRECTORY)
+        target_include_directories(m17_decoder PRIVATE "${LIBCODEC2_INCLUDE_ROOT}")
     endif()
 endif ()
