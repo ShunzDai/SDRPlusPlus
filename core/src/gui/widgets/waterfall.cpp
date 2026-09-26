@@ -3,7 +3,6 @@
 #include <imgui_internal.h>
 #include <imutils.h>
 #include <algorithm>
-#include <cmath>
 #include <volk/volk.h>
 #include <utils/flog.h>
 #include <gui/gui.h>
@@ -24,8 +23,6 @@ float DEFAULT_COLOR_MAP[][3] = {
     { 0x75, 0x00, 0x00 },
     { 0x4A, 0x00, 0x00 }
 };
-
-constexpr int DIFFERENTIAL_BASELINE_FRAMES = 100;
 
 // TODO: Fix this hacky BS
 
@@ -173,36 +170,6 @@ namespace ImGui {
                                           ImVec2(fftAreaMin.x + i, roundf(bPos)), trace, 1.0);
                 window->DrawList->AddLine(ImVec2(fftAreaMin.x + i, roundf(bPos)),
                                           ImVec2(fftAreaMin.x + i, fftAreaMax.y), shadow, 1.0);
-            }
-        }
-
-        if (differentialSpectrum && !differentialBaselineSampling && differentialBaselineSamples == DIFFERENTIAL_BASELINE_FRAMES && differentialBaseline.size() == (size_t)dataWidth) {
-            const ImU32 baselineColor = IM_COL32(191, 120, 255, 255);
-            for (int start = 0; start < dataWidth; start += differentialRebinDisplayBins) {
-                int end = std::min(start + differentialRebinDisplayBins, dataWidth);
-                float averagePower = 0.0f;
-                for (int i = start; i < end; i++) {
-                    averagePower += differentialBaseline[i];
-                }
-                float level = 10.0f * std::log10(averagePower / (end - start));
-                double aPos = fftAreaMax.y - ((level - fftMin) * scaleFactor);
-                double bPos = fftAreaMax.y - ((level - fftMin) * scaleFactor);
-                aPos = std::clamp<double>(aPos, fftAreaMin.y + 1, fftAreaMax.y);
-                bPos = std::clamp<double>(bPos, fftAreaMin.y + 1, fftAreaMax.y);
-                window->DrawList->AddLine(ImVec2(fftAreaMin.x + start, roundf(aPos)),
-                                          ImVec2(fftAreaMin.x + end - 1, roundf(bPos)), baselineColor, 1.5f);
-            }
-        }
-
-        if (differentialSpectrum && differentialObservationSamples > 0 && differentialValues.size() == (size_t)dataWidth) {
-            const ImU32 differentialColor = IM_COL32(255, 166, 66, 255);
-            for (int i = 1; i < dataWidth; i++) {
-                double aPos = fftAreaMax.y - ((differentialValues[i - 1] - fftMin) * scaleFactor);
-                double bPos = fftAreaMax.y - ((differentialValues[i] - fftMin) * scaleFactor);
-                aPos = std::clamp<double>(aPos, fftAreaMin.y + 1, fftAreaMax.y);
-                bPos = std::clamp<double>(bPos, fftAreaMin.y + 1, fftAreaMax.y);
-                window->DrawList->AddLine(ImVec2(fftAreaMin.x + i - 1, roundf(aPos)),
-                                          ImVec2(fftAreaMin.x + i, roundf(bPos)), differentialColor, 1.5f);
             }
         }
 
@@ -925,7 +892,6 @@ namespace ImGui {
         double offsetRatio = viewOffset / (wholeBandwidth / 2.0);
         int drawDataSize = (viewBandwidth / wholeBandwidth) * rawFFTSize;
         int drawDataStart = (((double)rawFFTSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
-        differentialRebinDisplayBins = std::max(1, (int)std::ceil((double)differentialRebinBins * dataWidth / drawDataSize));
 
         if (waterfallVisible) {
             doZoom(drawDataStart, drawDataSize, rawFFTSize, dataWidth, &rawFFTs[currentFFTLine * rawFFTSize], latestFFT);
@@ -970,40 +936,6 @@ namespace ImGui {
             for (int i = 1; i < dataWidth; i++) {
                 latestFFTHold[i] = std::max<float>(latestFFT[i], latestFFTHold[i] - fftHoldSpeed);
             }
-        }
-
-        if (differentialBaselineSampling && differentialBaseline.size() == (size_t)dataWidth) {
-            for (int i = 0; i < dataWidth; i++) {
-                differentialBaseline[i] += std::pow(10.0f, latestFFT[i] / 10.0f);
-            }
-
-            differentialBaselineSamples++;
-            if (differentialBaselineSamples == DIFFERENTIAL_BASELINE_FRAMES) {
-                for (float& baselinePower : differentialBaseline) {
-                    baselinePower /= DIFFERENTIAL_BASELINE_FRAMES;
-                }
-                differentialBaselineSampling = false;
-                differentialObservation.clear();
-                differentialValues.clear();
-                differentialObservationSamples = 0;
-            }
-        }
-
-        if (differentialObservationSampling && !differentialBaselineSampling && differentialBaselineSamples == DIFFERENTIAL_BASELINE_FRAMES && differentialBaseline.size() == (size_t)dataWidth) {
-            if (differentialObservation.size() != (size_t)dataWidth) {
-                differentialObservation.assign(dataWidth, 0.0f);
-                differentialObservationSamples = 0;
-            }
-            if (differentialValues.size() != (size_t)dataWidth) {
-                differentialValues.assign(dataWidth, 0.0f);
-            }
-            for (int i = 0; i < dataWidth; i++) {
-                differentialObservation[i] += std::pow(10.0f, latestFFT[i] / 10.0f);
-            }
-            differentialObservationSamples++;
-
-            updateDifferentialValues();
-
         }
 
         buf_mtx.unlock();
@@ -1263,110 +1195,6 @@ namespace ImGui {
 
     void WaterFall::setSNRSmoothing(bool enabled) {
         snrSmoothing = enabled;
-    }
-
-    void WaterFall::setDifferentialSpectrum(bool enabled) {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        differentialSpectrum = enabled;
-    }
-
-    void WaterFall::setDifferentialRebinBins(int bins) {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        differentialRebinBins = std::max(bins, 1);
-        updateDifferentialValues();
-    }
-
-    void WaterFall::updateDifferentialValues() {
-        if (differentialObservationSamples == 0 || differentialObservation.size() != (size_t)dataWidth) {
-            return;
-        }
-        if (differentialValues.size() != (size_t)dataWidth) {
-            differentialValues.assign(dataWidth, 0.0f);
-        }
-        for (int start = 0; start < dataWidth; start += differentialRebinDisplayBins) {
-            int end = std::min(start + differentialRebinDisplayBins, dataWidth);
-            float averagePower = 0.0f;
-            for (int i = start; i < end; i++) {
-                averagePower += differentialObservation[i] / differentialObservationSamples;
-            }
-            float level = 10.0f * std::log10(averagePower / (end - start));
-            for (int i = start; i < end; i++) {
-                differentialValues[i] = level;
-            }
-        }
-    }
-
-    bool WaterFall::captureDifferentialBaseline() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        if (!latestFFT || dataWidth <= 0) {
-            return false;
-        }
-
-        differentialBaseline.assign(dataWidth, 0.0f);
-        differentialObservation.clear();
-        differentialValues.clear();
-        differentialBaselineSampling = true;
-        differentialBaselineSamples = 0;
-        differentialObservationSampling = false;
-        differentialObservationSamples = 0;
-        return true;
-    }
-
-    bool WaterFall::startDifferentialIntegration() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        if (differentialBaselineSampling || differentialBaselineSamples != DIFFERENTIAL_BASELINE_FRAMES || differentialBaseline.empty()) {
-            return false;
-        }
-
-        if (differentialObservation.size() != (size_t)dataWidth) {
-            differentialObservation.clear();
-            differentialValues.clear();
-            differentialObservationSamples = 0;
-        }
-        differentialObservationSampling = true;
-        return true;
-    }
-
-    void WaterFall::stopDifferentialIntegration() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        differentialObservationSampling = false;
-    }
-
-    void WaterFall::resetDifferentialIntegration() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        differentialObservation.clear();
-        differentialValues.clear();
-        differentialObservationSampling = false;
-        differentialObservationSamples = 0;
-    }
-
-    bool WaterFall::hasDifferentialBaseline() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        return !differentialBaselineSampling && differentialBaselineSamples == DIFFERENTIAL_BASELINE_FRAMES && !differentialBaseline.empty();
-    }
-
-    bool WaterFall::isDifferentialBaselineSampling() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        return differentialBaselineSampling;
-    }
-
-    int WaterFall::getDifferentialBaselineSamples() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        return differentialBaselineSamples;
-    }
-
-    int WaterFall::getDifferentialBaselineTarget() {
-        return DIFFERENTIAL_BASELINE_FRAMES;
-    }
-
-    bool WaterFall::isDifferentialObservationSampling() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        return differentialObservationSampling;
-    }
-
-    int WaterFall::getDifferentialObservationSamples() {
-        std::lock_guard<std::recursive_mutex> lck(latestFFTMtx);
-        return differentialObservationSamples;
     }
 
     void WaterFall::setSNRSmoothingSpeed(float speed) {

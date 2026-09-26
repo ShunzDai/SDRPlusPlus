@@ -145,19 +145,6 @@ namespace ImGui {
         void setFFTSmoothing(bool enabled);
         void setFFTSmoothingSpeed(float speed);
 
-        void setDifferentialSpectrum(bool enabled);
-        void setDifferentialRebinBins(int bins);
-        bool captureDifferentialBaseline();
-        bool startDifferentialIntegration();
-        void stopDifferentialIntegration();
-        void resetDifferentialIntegration();
-        bool hasDifferentialBaseline();
-        bool isDifferentialBaselineSampling();
-        int getDifferentialBaselineSamples();
-        int getDifferentialBaselineTarget();
-        bool isDifferentialObservationSampling();
-        int getDifferentialObservationSamples();
-
         void setSNRSmoothing(bool enabled);
         void setSNRSmoothingSpeed(float speed);
 
@@ -232,7 +219,6 @@ namespace ImGui {
         ImVec2 wfMax;
 
     private:
-        void updateDifferentialValues();
         void drawWaterfall();
         void drawFFT();
         void drawVFOs();
@@ -323,17 +309,6 @@ namespace ImGui {
         bool fftSmoothing = false;
         float fftSmoothingAlpha = 0.5;
         float fftSmoothingBeta = 0.5;
-
-        bool differentialSpectrum = false;
-        std::vector<float> differentialBaseline;
-        std::vector<float> differentialObservation;
-        std::vector<float> differentialValues;
-        bool differentialBaselineSampling = false;
-        int differentialBaselineSamples = 0;
-        bool differentialObservationSampling = false;
-        int differentialObservationSamples = 0;
-        int differentialRebinBins = 512;
-        int differentialRebinDisplayBins = 1;
 
         bool snrSmoothing = false;
         float snrSmoothingAlpha = 0.5;
