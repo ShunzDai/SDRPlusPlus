@@ -271,11 +271,11 @@ private:
             self->acquireBackground();
         }
         ImGui::SameLine();
-        if (!hasBackground) { style::beginDisabled(); }
+        if (!hasBackground || running) { style::beginDisabled(); }
         if (ImGui::Button(("Start##" + self->name).c_str())) {
             self->startIntegration();
         }
-        if (!hasBackground) { style::endDisabled(); }
+        if (!hasBackground || running) { style::endDisabled(); }
         ImGui::SameLine();
         if (!running) { style::beginDisabled(); }
         if (ImGui::Button(("Stop##" + self->name).c_str())) {
